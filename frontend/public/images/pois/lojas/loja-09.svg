@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title">
+  <title id="title">Shoes Point</title>
+  <defs>
+    <linearGradient id="bg9" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#eef4f7"/>
+      <stop offset="100%" stop-color="#d6e4ed"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#bg9)"/>
+  <rect x="70" y="70" width="820" height="400" rx="28" fill="#ffffff" opacity="0.95"/>
+  <rect x="120" y="120" width="260" height="280" rx="18" fill="#50708a"/>
+  <path d="M145 320h90q35 0 45 35h-135z" fill="#d5e4ef"/>
+  <path d="M235 290h95q35 0 45 65h-140z" fill="#9ab3c8"/>
+  <circle cx="180" cy="355" r="10" fill="#3f5d74"/>
+  <circle cx="295" cy="355" r="10" fill="#3f5d74"/>
+  <text x="420" y="170" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#40596d" font-weight="700">GNOCENTER</text>
+  <text x="420" y="228" font-family="Segoe UI, Arial, sans-serif" font-size="42" fill="#21394a" font-weight="700">Shoes Point</text>
+  <text x="420" y="278" font-family="Segoe UI, Arial, sans-serif" font-size="26" fill="#405c71">Calcados feminino e masculino</text>
+  <rect x="420" y="320" width="390" height="62" rx="14" fill="#eef4f8"/>
+  <text x="448" y="360" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#365772">Tenis, sandalia e social</text>
+</svg>

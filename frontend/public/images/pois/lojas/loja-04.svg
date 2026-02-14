@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title">
+  <title id="title">Urban Fit</title>
+  <defs>
+    <linearGradient id="bg4" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#edf5ff"/>
+      <stop offset="100%" stop-color="#d9e9ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#bg4)"/>
+  <rect x="70" y="70" width="820" height="400" rx="28" fill="#ffffff" opacity="0.95"/>
+  <rect x="120" y="120" width="260" height="280" rx="18" fill="#3f66d8"/>
+  <path d="M200 165l35 30h-25v50h-40v-50h-25z" fill="#a7bcff"/>
+  <rect x="155" y="250" width="95" height="95" rx="16" fill="#213f95"/>
+  <rect x="260" y="250" width="75" height="95" rx="16" fill="#6e8ff2"/>
+  <text x="420" y="170" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#304886" font-weight="700">GNOCENTER</text>
+  <text x="420" y="228" font-family="Segoe UI, Arial, sans-serif" font-size="42" fill="#162550" font-weight="700">Urban Fit</text>
+  <text x="420" y="278" font-family="Segoe UI, Arial, sans-serif" font-size="26" fill="#385188">Streetwear e fitness feminino</text>
+  <rect x="420" y="320" width="390" height="62" rx="14" fill="#ecf2ff"/>
+  <text x="448" y="360" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#26458f">Top, legging e corta-vento</text>
+</svg>

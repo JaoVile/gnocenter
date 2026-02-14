@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title">
+  <title id="title">Couro Fino</title>
+  <defs>
+    <linearGradient id="bg6" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f5f3ef"/>
+      <stop offset="100%" stop-color="#e6dfd3"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#bg6)"/>
+  <rect x="70" y="70" width="820" height="400" rx="28" fill="#ffffff" opacity="0.95"/>
+  <rect x="120" y="120" width="260" height="280" rx="18" fill="#8a6a4c"/>
+  <rect x="150" y="175" width="80" height="180" rx="18" fill="#6a4e35"/>
+  <rect x="245" y="195" width="95" height="160" rx="18" fill="#b2906f"/>
+  <text x="420" y="170" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#5d4a38" font-weight="700">GNOCENTER</text>
+  <text x="420" y="228" font-family="Segoe UI, Arial, sans-serif" font-size="42" fill="#332416" font-weight="700">Couro Fino</text>
+  <text x="420" y="278" font-family="Segoe UI, Arial, sans-serif" font-size="26" fill="#5f4f3f">Jaquetas e acessorios</text>
+  <rect x="420" y="320" width="390" height="62" rx="14" fill="#f6f2eb"/>
+  <text x="448" y="360" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#65482f">Linha premium sintetica</text>
+</svg>

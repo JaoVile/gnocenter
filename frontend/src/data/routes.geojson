@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "rua_a_azul" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[100, 100], [100, 500]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "conexao_praca" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[100, 300], [400, 300]] 
+      }
+    }
+  ]
+}

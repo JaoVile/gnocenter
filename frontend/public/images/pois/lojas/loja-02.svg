@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title">
+  <title id="title">Estilo Kids</title>
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff3e8"/>
+      <stop offset="100%" stop-color="#ffe2cc"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#bg2)"/>
+  <rect x="70" y="70" width="820" height="400" rx="28" fill="#ffffff" opacity="0.95"/>
+  <rect x="120" y="120" width="260" height="280" rx="18" fill="#e78a2f"/>
+  <circle cx="185" cy="210" r="38" fill="#ffcf8e"/>
+  <rect x="155" y="248" width="60" height="95" rx="18" fill="#ffe4bf"/>
+  <circle cx="300" cy="205" r="32" fill="#ffcf8e"/>
+  <rect x="275" y="235" width="48" height="105" rx="16" fill="#ffe4bf"/>
+  <text x="420" y="170" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#66472b" font-weight="700">GNOCENTER</text>
+  <text x="420" y="228" font-family="Segoe UI, Arial, sans-serif" font-size="42" fill="#402710" font-weight="700">Estilo Kids</text>
+  <text x="420" y="278" font-family="Segoe UI, Arial, sans-serif" font-size="26" fill="#6a4a30">Moda infantil multimarcas</text>
+  <rect x="420" y="320" width="390" height="62" rx="14" fill="#fff3e6"/>
+  <text x="448" y="360" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#8c5422">Colecao infantil atacado</text>
+</svg>

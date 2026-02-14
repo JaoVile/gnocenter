@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Indicador de Loja</title>
+  <desc id="desc">Imagem indicativa para pontos de lojas.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f4f3ff"/>
+      <stop offset="100%" stop-color="#e7e2ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#bg)"/>
+  <g opacity="0.26" stroke="#b9b0ec" stroke-width="2">
+    <path d="M90 120h780M90 200h780M90 280h780M90 360h780M90 440h780"/>
+    <path d="M170 70v400M320 70v400M470 70v400M620 70v400M770 70v400"/>
+  </g>
+  <rect x="245" y="120" width="470" height="300" rx="26" fill="#ffffff" stroke="#d8cffc"/>
+  <path d="M360 210h240l-20 56h-200z" fill="#7c68dc"/>
+  <rect x="380" y="266" width="200" height="100" rx="10" fill="#f2efff"/>
+  <rect x="430" y="296" width="34" height="70" fill="#7c68dc"/>
+  <rect x="496" y="296" width="34" height="70" fill="#7c68dc"/>
+  <text x="480" y="372" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="38" fill="#403173" font-weight="700">
+    Loja
+  </text>
+  <text x="480" y="410" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#6b5c96">
+    Referencia visual de vitrine
+  </text>
+</svg>

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Indicador de Entrada</title>
+  <desc id="desc">Imagem indicativa para os pontos de entrada no mapa.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f0f7ff"/>
+      <stop offset="100%" stop-color="#dcecff"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#bg)"/>
+  <g opacity="0.28" stroke="#9ec3e8" stroke-width="2">
+    <path d="M80 120h800M80 200h800M80 280h800M80 360h800M80 440h800"/>
+    <path d="M160 70v400M320 70v400M480 70v400M640 70v400M800 70v400"/>
+  </g>
+  <rect x="250" y="120" width="460" height="300" rx="26" fill="#ffffff" stroke="#c3d9ef"/>
+  <path d="M415 300v-95l65-55 65 55v95h-40v-60h-50v60z" fill="#2f7ac7"/>
+  <path d="M470 240h20v30h-20z" fill="#f3f8ff"/>
+  <circle cx="480" cy="352" r="8" fill="#2f7ac7"/>
+  <text x="480" y="372" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="38" fill="#1e3a5f" font-weight="700">
+    Entrada
+  </text>
+  <text x="480" y="410" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#4f6b88">
+    Referencia visual de acesso
+  </text>
+</svg>

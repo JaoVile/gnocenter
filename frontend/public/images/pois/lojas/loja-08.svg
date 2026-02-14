@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title">
+  <title id="title">Plus Style Center</title>
+  <defs>
+    <linearGradient id="bg8" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f0efff"/>
+      <stop offset="100%" stop-color="#dfddff"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#bg8)"/>
+  <rect x="70" y="70" width="820" height="400" rx="28" fill="#ffffff" opacity="0.95"/>
+  <rect x="120" y="120" width="260" height="280" rx="18" fill="#6b63d9"/>
+  <circle cx="185" cy="180" r="24" fill="#ddd9ff"/>
+  <path d="M145 220h80v128h-80z" fill="#ddd9ff"/>
+  <circle cx="300" cy="178" r="26" fill="#ddd9ff"/>
+  <path d="M253 222h94v126h-94z" fill="#ddd9ff"/>
+  <text x="420" y="170" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#433d87" font-weight="700">GNOCENTER</text>
+  <text x="420" y="228" font-family="Segoe UI, Arial, sans-serif" font-size="42" fill="#231f56" font-weight="700">Plus Style Center</text>
+  <text x="420" y="278" font-family="Segoe UI, Arial, sans-serif" font-size="26" fill="#4e4a85">Moda plus size feminina</text>
+  <rect x="420" y="320" width="390" height="62" rx="14" fill="#efefff"/>
+  <text x="448" y="360" font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#3f39a0">Blazer, vestidos e flare</text>
+</svg>
