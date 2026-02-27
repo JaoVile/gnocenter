@@ -12,6 +12,7 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -110,14 +111,10 @@ const MAP_EAST = -36.22518;
 const MAP_CENTER: [number, number] = [-7.9455693404289525, -36.226693372971];
 const MAP_DEFAULT_ZOOM = 17.2;
 const MAP_FOCUS_ZOOM = 17.9;
-const MAP_MIN_ZOOM = 16.4;
 const MAP_MAX_ZOOM = 20.5;
 const mapBounds = new L.LatLngBounds([MAP_SOUTH, MAP_WEST], [MAP_NORTH, MAP_EAST]);
-const MAP_VIEWPORT_BOUNDS = mapBounds.pad(2.8);
-const AVERAGE_WALKING_SPEED_MPS = 1.35;
-const WALKER_ANIMATION_MIN_MS = 8500;
-const WALKER_ANIMATION_MAX_MS = 42000;
-const WALKER_ANIMATION_TIME_SCALE = 12;
+const AVERAGE_WALKING_SPEED_MPS = 1.4;
+const WALKER_PROGRESS_UPDATE_MS = 250;
 
 const imageToLatLng = (x: number, y: number): [number, number] => {
   const latSpan = MAP_NORTH - MAP_SOUTH;
@@ -220,6 +217,20 @@ const TUTORIAL_STORAGE_KEY = 'gnocenter.mapTutorialSeen';
 const MOBILE_MEDIA_QUERY = '(max-width: 900px)';
 const STORE_OPENING_HOUR = 8;
 const STORE_CLOSING_HOUR = 22;
+const PRESENTATION_MODE_QUERY_KEY = 'modo';
+const PRESENTATION_MODE_DEFAULT = true;
+
+const getPresentationModeFromQuery = () => {
+  if (typeof window === 'undefined') return PRESENTATION_MODE_DEFAULT;
+  const rawMode = new URLSearchParams(window.location.search)
+    .get(PRESENTATION_MODE_QUERY_KEY)
+    ?.trim()
+    .toLowerCase();
+
+  if (rawMode === 'admin' || rawMode === 'edicao') return false;
+  if (rawMode === 'apresentacao' || rawMode === 'demo') return true;
+  return PRESENTATION_MODE_DEFAULT;
+};
 
 const defaultPoiImages: Record<PoiType, string> = {
   entrada: '/images/pois/indicadores/entrada.svg',
@@ -233,6 +244,12 @@ const poiTypeLabels: Record<PoiType, string> = {
   entrada: 'Entradas',
 };
 
+const poiTypeSingularLabels: Record<PoiType, string> = {
+  loja: 'Loja',
+  banheiro: 'Banheiro',
+  entrada: 'Entrada',
+};
+
 const storeProductImageUrls: Record<string, string[]> = {
   loja_jeans: [
     '/images/pois/lojas/Itens/Cal%C3%A7amassa.avif',
@@ -242,7 +259,7 @@ const storeProductImageUrls: Record<string, string[]> = {
   loja_kids: [
     '/images/pois/lojas/Itens/Roupainfantil.avif',
     '/images/pois/lojas/Itens/Roupainfantil2.avif',
-    '/images/pois/lojas/Itens/Conjuntoinfantil3.avif',
+    '/images/pois/lojas/Itens/Roupainfantil2.avif',
   ],
   loja_praia: [
     '/images/pois/lojas/Itens/boladepraia.avif',
@@ -271,20 +288,20 @@ const storeGalleryUrls: Record<string, string[]> = {
 
 const tutorialSteps = [
   {
-    title: 'Bem-vindo ao mapa',
-    text: 'Use os botoes Pins e Rota para abrir apenas o painel que voce precisa. A tela fica mais limpa e rapida.',
+    title: 'Bem-vindo(a) ao mapa',
+    text: 'Use os botões Pins e Rota para abrir só o que você precisa. Assim a navegação fica limpa e intuitiva.',
   },
   {
-    title: 'Encontre locais rapido',
-    text: 'No painel Pins, pesquise por lojas e pontos. Clique em Ver para abrir detalhes e focar no mapa.',
+    title: 'Encontre tudo rápido',
+    text: 'No painel Pins, pesquise por lojas e serviços. Toque em Ver para abrir detalhes e focar no mapa.',
   },
   {
-    title: 'Digite para tracar rota',
-    text: 'No painel Rota, digite origem e destino. As sugestoes aparecem enquanto voce escreve: ex. E -> Entrada.',
+    title: 'Trace sua rota em segundos',
+    text: 'No painel Rota, digite origem e destino. As sugestões aparecem enquanto você escreve.',
   },
   {
-    title: 'Pronto para usar',
-    text: 'Toque em um pin para abrir o card completo e use Obter direcoes para navegar entre os pontos.',
+    title: 'Pronto para visitar',
+    text: 'Toque em um pin para abrir o card e use Traçar rota até aqui para começar a navegação.',
   },
 ] as const;
 
@@ -579,6 +596,7 @@ const MapController = ({
 };
 
 const ModaCenterMap = () => {
+  const [isPresentationMode] = useState(getPresentationModeFromQuery);
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia(MOBILE_MEDIA_QUERY).matches : false,
   );
@@ -608,10 +626,11 @@ const ModaCenterMap = () => {
   const [showDestinationSuggestions, setShowDestinationSuggestions] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(() => {
     if (typeof window === 'undefined') return false;
+    if (getPresentationModeFromQuery()) return false;
     return window.localStorage.getItem(TUTORIAL_STORAGE_KEY) !== '1';
   });
   const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
-  const [routeMessage, setRouteMessage] = useState('Marque seu local atual e escolha para onde quer ir.');
+  const [routeMessage, setRouteMessage] = useState('Defina seu local atual e escolha o destino para começar.');
   const [walkerProgress, setWalkerProgress] = useState(0);
   const [walkerPosition, setWalkerPosition] = useState<[number, number] | null>(null);
   const walkerTimerRef = useRef<number | null>(null);
@@ -620,6 +639,12 @@ const ModaCenterMap = () => {
   const mobileSheetHeightRef = useRef(0);
   const sheetDragStartYRef = useRef<number | null>(null);
   const sheetDragStartHeightRef = useRef(0);
+
+  useEffect(() => {
+    if (!isPresentationMode || !isAdmin) return;
+    setIsAdmin(false);
+    setEditingPoi(null);
+  }, [isPresentationMode, isAdmin]);
 
   const activePoi = useMemo(
     () => (activePoiId ? pois.find((poi) => poi.id === activePoiId) ?? null : null),
@@ -649,19 +674,19 @@ const ModaCenterMap = () => {
       ? 'chegando'
       : formatWalkingTimeLabel(routeEtaMinutes * Math.max(0, 1 - walkerProgress));
 
-  const getMobileSheetBounds = () => {
+  const getMobileSheetBounds = useCallback(() => {
     const viewportHeight =
       typeof window !== 'undefined' ? Math.round(window.visualViewport?.height ?? window.innerHeight) : 780;
     const minHeight = Math.max(164, Math.round(viewportHeight * 0.24));
     const maxHeight = Math.max(minHeight + 90, Math.round(viewportHeight * 0.7));
     const defaultHeight = Math.max(minHeight, Math.min(maxHeight, Math.round(viewportHeight * 0.32)));
     return { minHeight, maxHeight, defaultHeight };
-  };
+  }, []);
 
-  const clampMobileSheetHeight = (value: number) => {
+  const clampMobileSheetHeight = useCallback((value: number) => {
     const bounds = getMobileSheetBounds();
     return Math.max(bounds.minHeight, Math.min(bounds.maxHeight, value));
-  };
+  }, [getMobileSheetBounds]);
 
   const handleMobileSheetPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!isMobile) return;
@@ -701,7 +726,7 @@ const ModaCenterMap = () => {
     [orderedByAccessPois],
   );
 
-  const getRouteSuggestions = (rawQuery: string) => {
+  const getRouteSuggestions = useCallback((rawQuery: string) => {
     const query = normalizeForSearch(rawQuery.trim());
     const baseList = query
       ? routeSuggestionPois.filter((poi) => {
@@ -731,15 +756,15 @@ const ModaCenterMap = () => {
         return a.nome.localeCompare(b.nome);
       })
       .slice(0, 8);
-  };
+  }, [routeSuggestionPois]);
 
   const originSuggestions = useMemo(() => {
     return getRouteSuggestions(originQuery);
-  }, [originQuery, routeSuggestionPois]);
+  }, [originQuery, getRouteSuggestions]);
 
   const destinationSuggestions = useMemo(() => {
     return getRouteSuggestions(destinationQuery);
-  }, [destinationQuery, routeSuggestionPois]);
+  }, [destinationQuery, getRouteSuggestions]);
 
   const autoVisiblePois = useMemo(() => {
     return orderedByAccessPois.filter((poi) => enabledTypes[poi.tipo]).slice(0, MAX_DEFAULT_VISIBLE_PINS);
@@ -783,7 +808,7 @@ const ModaCenterMap = () => {
     setShowOriginSuggestions(false);
     setShowDestinationSuggestions(false);
     setRota(null);
-    setRouteMessage('Rota limpa. Marque seu local atual e escolha o destino.');
+    setRouteMessage('Rota limpa. Defina seu local atual e escolha o destino.');
   };
 
   const selectOriginPoi = (poi: PointData) => {
@@ -824,26 +849,26 @@ const ModaCenterMap = () => {
 
     if (!origem || !destino) {
       setRota(null);
-      setRouteMessage('Selecione local atual e destino validos.');
+      setRouteMessage('Escolha um local atual e um destino válidos.');
       return;
     }
 
     if (origem.id === destino.id) {
       setRota(null);
-      setRouteMessage('Local atual e destino precisam ser diferentes.');
+      setRouteMessage('O local atual e o destino precisam ser diferentes.');
       return;
     }
 
     if (!origem.nodeId || !destino.nodeId) {
       setRota(null);
-      setRouteMessage('Um dos pontos nao esta conectado ao grafo de rotas.');
+      setRouteMessage('Não foi possível conectar um dos pontos à malha de rotas.');
       return;
     }
 
     const caminho = findPath(origem.nodeId, destino.nodeId);
     if (!caminho) {
       setRota(null);
-      setRouteMessage(`Sem rota entre ${origem.nome} e ${destino.nome}.`);
+      setRouteMessage(`Não encontramos rota entre ${origem.nome} e ${destino.nome}.`);
       return;
     }
 
@@ -855,13 +880,13 @@ const ModaCenterMap = () => {
 
     setRota(caminho);
     setRouteMessage(
-      `Rota ativa: ${origem.nome} -> ${destino.nome}. Distancia aprox.: ${distanceLabel} | Tempo medio a pe: ${etaLabel}.`,
+      `Rota pronta: ${origem.nome} -> ${destino.nome}. Distância: ${distanceLabel} | Tempo médio: ${etaLabel}.`,
     );
   };
 
   const markPoiAsCurrentLocation = (poi: PointData) => {
     if (!poi.nodeId) {
-      setRouteMessage(`"${poi.nome}" nao esta ligado ao grafo de rotas.`);
+      setRouteMessage(`"${poi.nome}" ainda não está conectado à malha de rotas.`);
       return;
     }
 
@@ -869,13 +894,13 @@ const ModaCenterMap = () => {
 
     if (!selectedDestinationId) {
       setRota(null);
-      setRouteMessage(`Local atual marcado: ${poi.nome}. Agora toque em "Ir para o local".`);
+      setRouteMessage(`Local atual definido em ${poi.nome}. Agora escolha seu destino.`);
       return;
     }
 
     if (selectedDestinationId === poi.id) {
       setRota(null);
-      setRouteMessage(`Voce ja esta em ${poi.nome}. Escolha outro destino.`);
+      setRouteMessage(`Você já está em ${poi.nome}. Escolha outro destino.`);
       return;
     }
 
@@ -884,7 +909,7 @@ const ModaCenterMap = () => {
 
   const navigateToPoi = (poi: PointData) => {
     if (!poi.nodeId) {
-      setRouteMessage(`"${poi.nome}" nao esta ligado ao grafo de rotas.`);
+      setRouteMessage(`"${poi.nome}" ainda não está conectado à malha de rotas.`);
       return;
     }
 
@@ -892,13 +917,13 @@ const ModaCenterMap = () => {
 
     if (!selectedOriginId) {
       setRota(null);
-      setRouteMessage(`Destino definido: ${poi.nome}. Primeiro marque seu local atual.`);
+      setRouteMessage(`Destino definido em ${poi.nome}. Agora informe seu local atual.`);
       return;
     }
 
     if (selectedOriginId === poi.id) {
       setRota(null);
-      setRouteMessage(`Voce ja esta em ${poi.nome}.`);
+      setRouteMessage(`Você já está em ${poi.nome}.`);
       return;
     }
 
@@ -907,7 +932,7 @@ const ModaCenterMap = () => {
 
   const handleDirectionsFromActivePoi = () => {
     if (!activePoi) {
-      setRouteMessage('Selecione um ponto antes de pedir direcoes.');
+      setRouteMessage('Selecione um ponto para traçar a rota.');
       return;
     }
 
@@ -917,11 +942,6 @@ const ModaCenterMap = () => {
   const setActivePoiAsOrigin = () => {
     if (!activePoi) return;
     markPoiAsCurrentLocation(activePoi);
-  };
-
-  const setActivePoiAsDestination = () => {
-    if (!activePoi) return;
-    navigateToPoi(activePoi);
   };
 
   const handleMarkerSelection = (poi: PointData) => {
@@ -934,7 +954,7 @@ const ModaCenterMap = () => {
     focusPoi(poi, true);
 
     if (!poi.nodeId) {
-      setRouteMessage(`"${poi.nome}" nao esta ligado ao grafo de rotas.`);
+      setRouteMessage(`"${poi.nome}" ainda não está conectado à malha de rotas.`);
       return;
     }
 
@@ -979,7 +999,7 @@ const ModaCenterMap = () => {
     }
 
     if (typeof editingPoi.x !== 'number' || typeof editingPoi.y !== 'number') {
-      alert('Coordenadas invalidas para o ponto.');
+      alert('Coordenadas inválidas para o ponto.');
       return;
     }
 
@@ -1069,7 +1089,7 @@ const ModaCenterMap = () => {
 
   const handleManualRoute = () => {
     if (!selectedOriginId || !selectedDestinationId) {
-      setRouteMessage('Defina local atual e destino antes de tracar a rota.');
+      setRouteMessage('Informe local atual e destino antes de traçar a rota.');
       return;
     }
 
@@ -1098,11 +1118,9 @@ const ModaCenterMap = () => {
     setWalkerProgress(0);
 
     const realWalkingDurationMs = (routeDistanceMeters / AVERAGE_WALKING_SPEED_MPS) * 1000;
-    const animationDurationMs = Math.min(
-      WALKER_ANIMATION_MAX_MS,
-      Math.max(WALKER_ANIMATION_MIN_MS, realWalkingDurationMs / WALKER_ANIMATION_TIME_SCALE),
-    );
-    const tickMs = isMobile ? 90 : 55;
+    const animationDurationMs =
+      Number.isFinite(realWalkingDurationMs) && realWalkingDurationMs > 0 ? realWalkingDurationMs : 1;
+    const tickMs = WALKER_PROGRESS_UPDATE_MS;
     const animationStart = performance.now();
 
     const tickWalker = () => {
@@ -1126,23 +1144,23 @@ const ModaCenterMap = () => {
         walkerTimerRef.current = null;
       }
     };
-  }, [routeLatLngPoints, routeDistanceMeters, isMobile]);
+  }, [routeLatLngPoints, routeDistanceMeters]);
 
   useEffect(() => {
     mobileSheetHeightRef.current = mobileSheetHeight;
   }, [mobileSheetHeight]);
 
   useEffect(() => {
-    if (!isMobile || !activePoi) {
+    if (!isMobile || !activePoiId) {
       setMobileSheetHeight(0);
       return;
     }
     const { defaultHeight } = getMobileSheetBounds();
     setMobileSheetHeight(defaultHeight);
-  }, [isMobile, activePoiId]);
+  }, [isMobile, activePoiId, getMobileSheetBounds]);
 
   useEffect(() => {
-    if (!isMobile || !activePoi || typeof window === 'undefined') return;
+    if (!isMobile || !activePoiId || typeof window === 'undefined') return;
 
     const syncMobileSheetSize = () => {
       const { defaultHeight } = getMobileSheetBounds();
@@ -1157,7 +1175,7 @@ const ModaCenterMap = () => {
       window.removeEventListener('resize', syncMobileSheetSize);
       window.visualViewport?.removeEventListener('resize', syncMobileSheetSize);
     };
-  }, [isMobile, activePoiId]);
+  }, [isMobile, activePoiId, clampMobileSheetHeight, getMobileSheetBounds]);
 
   useEffect(() => {
     if (!isMobileSheetDragging || typeof window === 'undefined') return;
@@ -1190,7 +1208,7 @@ const ModaCenterMap = () => {
       window.removeEventListener('pointerup', finishDrag);
       window.removeEventListener('pointercancel', finishDrag);
     };
-  }, [isMobileSheetDragging]);
+  }, [isMobileSheetDragging, clampMobileSheetHeight, getMobileSheetBounds]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1251,10 +1269,28 @@ const ModaCenterMap = () => {
   const storeStatus = getStoreStatus();
   const activeWhatsappLink = activePoi ? toWhatsappLink(activePoi.contato) : null;
   const activeGalleryImages = activePoi ? getPoiGalleryImages(activePoi) : [];
-  const activePreviewProducts = activePoi ? getStorePreviewProducts(activePoi, 3) : [];
-  const activePanelGalleryImages = isMobile ? activeGalleryImages.slice(0, 1) : activeGalleryImages.slice(0, 2);
-  const activePanelPreviewProducts = isMobile ? activePreviewProducts.slice(0, 2) : activePreviewProducts;
+  const activePreviewProducts = activePoi
+    ? getStorePreviewProducts(activePoi, isPresentationMode ? 2 : 3)
+    : [];
+  const activePanelGalleryImages = isMobile
+    ? activeGalleryImages.slice(0, 1)
+    : activeGalleryImages.slice(0, isPresentationMode ? 1 : 2);
+  const activePanelPreviewProducts = activePreviewProducts.slice(0, isMobile ? 2 : 2);
+  const isActivePoiCurrentLocation = Boolean(activePoi && selectedOriginId === activePoi.id);
+  const shouldPromoteSetOrigin = !selectedOriginId || isActivePoiCurrentLocation;
+  const primaryPoiActionLabel = shouldPromoteSetOrigin
+    ? isActivePoiCurrentLocation
+      ? 'Você está aqui'
+      : 'Definir como local atual'
+    : 'Traçar rota até aqui';
+  const secondaryPoiActionLabel = shouldPromoteSetOrigin
+    ? 'Traçar rota até aqui'
+    : 'Alterar local atual';
+  const primaryPoiAction = shouldPromoteSetOrigin ? setActivePoiAsOrigin : handleDirectionsFromActivePoi;
+  const secondaryPoiAction = shouldPromoteSetOrigin ? handleDirectionsFromActivePoi : setActivePoiAsOrigin;
   const currentTutorialStep = tutorialSteps[tutorialStepIndex];
+  const mapOverlayUrl = '/maps/mapa-visual.jpg';
+  const mapOverlayOpacity = isMobile ? 0.8 : 0.68;
   const mobileSheetBounds = isMobile ? getMobileSheetBounds() : null;
   const resolvedMobileSheetHeight =
     isMobile && mobileSheetBounds
@@ -1269,24 +1305,24 @@ const ModaCenterMap = () => {
         minHeight: '100vh',
         display: 'flex',
         overflow: 'hidden',
-        background: '#eceff1',
+        background: 'var(--color-bg)',
       }}
     >
       <div
         style={{
           width: isAdmin ? '340px' : '0px',
           transition: 'width 0.3s ease',
-          background: 'white',
-          borderRight: '1px solid #dce1e6',
+          background: 'var(--color-surface-strong)',
+          borderRight: '1px solid var(--color-border)',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '2px 0 10px rgba(0,0,0,0.08)',
+          boxShadow: '0 6px 20px rgba(15, 23, 42, 0.12)',
           zIndex: 1200,
         }}
       >
         {isAdmin && (
           <>
-            <div style={{ padding: '18px', background: '#1f2d3d', color: 'white' }}>
+            <div style={{ padding: '18px', background: '#1d3248', color: 'white' }}>
               <h2 style={{ margin: 0, fontSize: '18px' }}>Painel Admin</h2>
               <p style={{ margin: '6px 0 0 0', fontSize: '12px', opacity: 0.8 }}>
                 {pois.length} pontos cadastrados
@@ -1305,7 +1341,7 @@ const ModaCenterMap = () => {
                     width: '100%',
                     border: '1px solid #edf1f4',
                     borderRadius: '8px',
-                    background: editingPoi?.id === poi.id ? '#eef6ff' : 'white',
+                    background: editingPoi?.id === poi.id ? 'var(--color-primary-soft)' : 'white',
                     marginBottom: '8px',
                     textAlign: 'left',
                     padding: '10px',
@@ -1323,7 +1359,7 @@ const ModaCenterMap = () => {
             <div
               style={{
                 padding: '14px',
-                borderTop: '1px solid #dce1e6',
+                borderTop: '1px solid var(--color-border)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '10px',
@@ -1331,15 +1367,8 @@ const ModaCenterMap = () => {
             >
               <button
                 onClick={baixarJson}
-                style={{
-                  background: '#27ae60',
-                  color: 'white',
-                  border: 'none',
-                  padding: '12px',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontWeight: 700,
-                }}
+                className='btn btn-success'
+                style={{ padding: '12px' }}
               >
                 Baixar JSON
               </button>
@@ -1348,14 +1377,7 @@ const ModaCenterMap = () => {
                   setIsAdmin(false);
                   setEditingPoi(null);
                 }}
-                style={{
-                  background: '#c0392b',
-                  color: 'white',
-                  border: 'none',
-                  padding: '10px',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                }}
+                className='btn btn-danger'
               >
                 Sair do modo admin
               </button>
@@ -1374,18 +1396,20 @@ const ModaCenterMap = () => {
               width: '330px',
               maxHeight: '86vh',
               overflowY: 'auto',
-              background: 'white',
+              background: 'var(--color-surface)',
               padding: '18px',
               borderRadius: '12px',
-              boxShadow: '0 8px 26px rgba(0,0,0,0.18)',
+              border: '1px solid var(--color-border)',
+              boxShadow: 'var(--shadow-float)',
               zIndex: 3000,
             }}
+            className='map-floating-panel'
           >
             <h3 style={{ marginTop: 0, marginBottom: '12px' }}>
               {editingPoi.id ? 'Editar ponto' : 'Novo ponto'}
             </h3>
 
-            <label style={{ fontSize: '12px', fontWeight: 700 }}>Nome</label>
+            <label className='map-input-label'>Nome</label>
             <input
               value={editingPoi.nome || ''}
               onChange={(e) => setEditingPoi({ ...editingPoi, nome: e.target.value })}
@@ -1393,7 +1417,7 @@ const ModaCenterMap = () => {
               placeholder='Ex: Loja da Ana'
             />
 
-            <label style={{ fontSize: '12px', fontWeight: 700 }}>Tipo</label>
+            <label className='map-input-label'>Tipo</label>
             <select
               value={editingPoi.tipo || 'loja'}
               onChange={(e) => setEditingPoi({ ...editingPoi, tipo: e.target.value as PoiType })}
@@ -1404,15 +1428,15 @@ const ModaCenterMap = () => {
               <option value='entrada'>Entrada</option>
             </select>
 
-            <label style={{ fontSize: '12px', fontWeight: 700 }}>Descricao</label>
+            <label className='map-input-label'>Descrição</label>
             <input
               value={editingPoi.descricao || ''}
               onChange={(e) => setEditingPoi({ ...editingPoi, descricao: e.target.value })}
               style={inputStyle}
-              placeholder='Informacao curta sobre o ponto'
+              placeholder='Informação curta sobre o ponto'
             />
 
-            <label style={{ fontSize: '12px', fontWeight: 700 }}>URL da foto</label>
+            <label className='map-input-label'>URL da foto</label>
             <input
               value={editingPoi.imagemUrl || ''}
               onChange={(e) => setEditingPoi({ ...editingPoi, imagemUrl: e.target.value })}
@@ -1422,7 +1446,7 @@ const ModaCenterMap = () => {
 
             {editingPoi.tipo === 'loja' && (
               <>
-                <label style={{ fontSize: '12px', fontWeight: 700 }}>Contato</label>
+                <label className='map-input-label'>Contato</label>
                 <input
                   value={editingPoi.contato || ''}
                   onChange={(e) => setEditingPoi({ ...editingPoi, contato: e.target.value })}
@@ -1430,7 +1454,7 @@ const ModaCenterMap = () => {
                   placeholder='(81) 99999-9999'
                 />
 
-                <label style={{ fontSize: '12px', fontWeight: 700 }}>Produtos (um por linha)</label>
+                <label className='map-input-label'>Produtos (um por linha)</label>
                 <textarea
                   value={editingPoi.produtosText || ''}
                   onChange={(e) => setEditingPoi({ ...editingPoi, produtosText: e.target.value })}
@@ -1441,20 +1465,22 @@ const ModaCenterMap = () => {
             )}
 
             <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
-              <button onClick={salvarPonto} style={{ ...actionButton, background: '#2563eb' }}>
+              <button onClick={salvarPonto} style={{ ...actionButton }} className='btn btn-primary'>
                 Salvar
               </button>
               {editingPoi.id && (
                 <button
                   onClick={() => deletarPonto(editingPoi.id!)}
-                  style={{ ...actionButton, background: '#dc2626', width: '56px', flex: 'unset' }}
+                  style={{ ...actionButton, width: '56px', flex: 'unset' }}
+                  className='btn btn-danger'
                 >
                   Del
                 </button>
               )}
               <button
                 onClick={() => setEditingPoi(null)}
-                style={{ ...actionButton, background: '#64748b', width: '56px', flex: 'unset' }}
+                style={{ ...actionButton, width: '56px', flex: 'unset' }}
+                className='btn btn-neutral'
               >
                 X
               </button>
@@ -1472,28 +1498,16 @@ const ModaCenterMap = () => {
               display: 'flex',
               gap: 8,
               alignItems: 'center',
-              background: 'rgba(255,255,255,0.95)',
-              border: '1px solid #dbe4ea',
-              borderRadius: 999,
-              boxShadow: '0 10px 18px rgba(15,23,42,0.15)',
               padding: '6px',
             }}
+            className='map-surface-toolbar'
           >
             <button
               onClick={() => {
                 setIsPinsPanelOpen((prev) => !prev);
                 setIsRoutePanelOpen(false);
               }}
-              style={{
-                border: isPinsPanelOpen ? '1px solid #2563eb' : '1px solid #cbd5e1',
-                background: isPinsPanelOpen ? '#eff6ff' : 'white',
-                color: isPinsPanelOpen ? '#1d4ed8' : '#334155',
-                borderRadius: 999,
-                padding: '7px 12px',
-                fontSize: 12,
-                fontWeight: 800,
-                cursor: 'pointer',
-              }}
+              className={`map-toggle-btn ${isPinsPanelOpen ? 'active' : ''}`}
             >
               Pins ({visiblePois.length})
             </button>
@@ -1502,37 +1516,21 @@ const ModaCenterMap = () => {
                 setIsRoutePanelOpen((prev) => !prev);
                 setIsPinsPanelOpen(false);
               }}
-              style={{
-                border: isRoutePanelOpen ? '1px solid #2563eb' : '1px solid #cbd5e1',
-                background: isRoutePanelOpen ? '#eff6ff' : 'white',
-                color: isRoutePanelOpen ? '#1d4ed8' : '#334155',
-                borderRadius: 999,
-                padding: '7px 12px',
-                fontSize: 12,
-                fontWeight: 800,
-                cursor: 'pointer',
-              }}
+              className={`map-toggle-btn ${isRoutePanelOpen ? 'active' : ''}`}
             >
               Rota
             </button>
-            <button
-              onClick={() => {
-                setTutorialStepIndex(0);
-                setIsTutorialOpen(true);
-              }}
-              style={{
-                border: '1px solid #cbd5e1',
-                background: 'white',
-                color: '#334155',
-                borderRadius: 999,
-                padding: '7px 12px',
-                fontSize: 12,
-                fontWeight: 800,
-                cursor: 'pointer',
-              }}
-            >
-              Tutorial
-            </button>
+            {!isPresentationMode && (
+              <button
+                onClick={() => {
+                  setTutorialStepIndex(0);
+                  setIsTutorialOpen(true);
+                }}
+                className='map-toggle-btn'
+              >
+                Tutorial
+              </button>
+            )}
           </div>
         )}
 
@@ -1545,156 +1543,105 @@ const ModaCenterMap = () => {
               right: isMobile ? 8 : 'auto',
               zIndex: 1110,
               width: isMobile ? 'calc(100vw - 16px)' : 360,
-              maxHeight: isMobile ? 'calc(44dvh - env(safe-area-inset-bottom, 0px))' : '58vh',
+              maxHeight: isMobile ? 'calc(44dvh - env(safe-area-inset-bottom, 0px))' : '60vh',
               overflowY: 'auto',
-              background: 'rgba(255,255,255,0.97)',
-              border: '1px solid #dbe4ea',
-              borderRadius: 12,
-              boxShadow: '0 12px 24px rgba(15,23,42,0.2)',
               padding: isMobile ? 10 : 12,
             }}
+            className='map-floating-panel'
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>Painel de pins</div>
+            <div className='pin-panel-hero'>
+              <div>
+                <div className='map-panel-title'>Explorar locais</div>
+                <div className='pin-panel-subtitle'>
+                  Encontre lojas e servicos rapidamente, em um fluxo visual parecido com Pointr.
+                </div>
+              </div>
               <button
                 onClick={() => setIsPinsPanelOpen(false)}
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  color: '#64748b',
-                  fontSize: 18,
-                  cursor: 'pointer',
-                  lineHeight: 1,
-                }}
+                className='pin-panel-close'
                 title='Fechar painel de pins'
               >
                 x
               </button>
             </div>
 
-            <div style={{ fontSize: 12, color: '#475569', marginBottom: 10 }}>
-              {manualVisiblePoiIds.length > 0
-                ? `Selecao manual ativa (${manualVisiblePoiIds.length} pins).`
-                : `Automatico: ate ${MAX_DEFAULT_VISIBLE_PINS} pins mais acessados.`}
-            </div>
-
-            <div style={{ position: 'relative', marginBottom: 10 }}>
+            <div className='pin-search-box'>
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder='Procurar loja, banheiro ou entrada...'
-                style={{ ...inputStyle, marginBottom: 0, paddingRight: 34 }}
+                placeholder='Buscar loja, banheiro ou entrada...'
+                className='map-input pin-search-input'
+                style={{ ...inputStyle, marginBottom: 0 }}
               />
-              <span style={{ position: 'absolute', right: 12, top: 11, color: '#94a3b8', fontSize: 14 }}>
-                Buscar
-              </span>
+              <span className='pin-search-label'>Buscar</span>
             </div>
 
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            <div className='pin-filter-row'>
               {(Object.keys(poiTypeLabels) as PoiType[]).map((type) => (
                 <button
                   key={`filter_${type}`}
                   onClick={() => toggleType(type)}
-                  style={{
-                    border: enabledTypes[type] ? '1px solid #2563eb' : '1px solid #cbd5e1',
-                    background: enabledTypes[type] ? '#eff6ff' : 'white',
-                    color: enabledTypes[type] ? '#1d4ed8' : '#334155',
-                    borderRadius: 999,
-                    padding: '6px 10px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
+                  className={`map-chip pin-filter-chip ${enabledTypes[type] ? 'active' : ''}`}
                 >
+                  <span className={`pin-filter-dot pin-filter-dot-${type}`} />
                   {poiTypeLabels[type]}
                 </button>
               ))}
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 8,
-                fontSize: 12,
-                color: '#475569',
-              }}
-            >
-              <span>{visiblePois.length} pins visiveis</span>
-              <button
-                onClick={() => setManualVisiblePoiIds([])}
-                disabled={manualVisiblePoiIds.length === 0}
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  color: manualVisiblePoiIds.length > 0 ? '#2563eb' : '#94a3b8',
-                  fontWeight: 700,
-                  cursor: manualVisiblePoiIds.length > 0 ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Usar automatico
-              </button>
+            <div className='pin-panel-meta'>
+              <span>{isPresentationMode ? `${searchablePois.length} resultados` : `${visiblePois.length} visiveis`}</span>
+              {!isPresentationMode && (
+                <button
+                  onClick={() => setManualVisiblePoiIds([])}
+                  disabled={manualVisiblePoiIds.length === 0}
+                  className='map-inline-link'
+                  style={{ color: manualVisiblePoiIds.length > 0 ? 'var(--color-primary)' : 'var(--color-text-soft)' }}
+                >
+                  Modo inteligente
+                </button>
+              )}
             </div>
 
             <div
               style={{
-                maxHeight: isMobile ? 140 : 220,
+                maxHeight: isMobile ? 190 : 320,
                 overflowY: 'auto',
-                border: '1px solid #e2e8f0',
-                borderRadius: 10,
-                padding: 8,
-                display: 'grid',
-                gap: 6,
               }}
+              className='map-list-shell pin-results-shell'
             >
               {searchablePois.map((poi) => {
                 const checked = manualVisiblePoiIds.includes(poi.id);
                 return (
                   <div
                     key={`catalog_${poi.id}`}
+                    className={`map-list-item pin-result-row ${checked ? 'active' : ''}`}
                     style={{
-                      border: checked ? '1px solid #93c5fd' : '1px solid #e2e8f0',
-                      borderRadius: 8,
-                      background: checked ? '#f0f9ff' : 'white',
-                      padding: '6px 8px',
-                      display: 'grid',
-                      gridTemplateColumns: '18px 1fr auto',
-                      alignItems: 'center',
-                      gap: 8,
+                      gridTemplateColumns: isPresentationMode ? '1fr auto' : '22px 1fr auto',
                     }}
                   >
-                    <input
-                      type='checkbox'
-                      checked={checked}
-                      onChange={() => toggleManualVisibility(poi.id)}
-                      title='Controlar visibilidade manual deste pin'
-                    />
+                    {!isPresentationMode && (
+                      <input
+                        className='pin-select-check'
+                        type='checkbox'
+                        checked={checked}
+                        onChange={() => toggleManualVisibility(poi.id)}
+                        title='Controlar visibilidade manual deste pin'
+                      />
+                    )}
                     <button
                       onClick={() => focusPoi(poi, true)}
-                      style={{
-                        border: 'none',
-                        background: 'transparent',
-                        textAlign: 'left',
-                        padding: 0,
-                        cursor: 'pointer',
-                      }}
+                      className='pin-result-main'
                     >
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{poi.nome}</div>
-                      <div style={{ fontSize: 11, color: '#64748b' }}>
-                        {poi.tipo.toUpperCase()} | {poiAccessCount[poi.id] ?? 0} acessos
-                      </div>
+                      <span className={`pin-result-type-mark pin-result-type-mark-${poi.tipo}`} />
+                      <span className='pin-result-text'>
+                        <span className='pin-result-title'>{poi.nome}</span>
+                        <span className='pin-result-subtitle'>{poiTypeSingularLabels[poi.tipo]}</span>
+                      </span>
                     </button>
                     <button
                       onClick={() => focusPoi(poi, true)}
-                      style={{
-                        border: '1px solid #cbd5e1',
-                        borderRadius: 6,
-                        background: 'white',
-                        fontSize: 11,
-                        padding: '4px 8px',
-                        cursor: 'pointer',
-                      }}
+                      className='pin-result-open'
                     >
                       Ver
                     </button>
@@ -1703,14 +1650,13 @@ const ModaCenterMap = () => {
               })}
 
               {searchablePois.length === 0 && (
-                <div style={{ fontSize: 12, color: '#64748b', padding: '6px 2px' }}>
+                <div className='pin-empty-state'>
                   Nenhum ponto encontrado para esse filtro.
                 </div>
               )}
             </div>
           </div>
         )}
-
         {!isAdmin && isRoutePanelOpen && (
           <div
             style={{
@@ -1723,147 +1669,151 @@ const ModaCenterMap = () => {
               width: isMobile ? 'calc(100vw - 16px)' : 360,
               maxHeight: isMobile ? 'calc(46dvh - env(safe-area-inset-bottom, 0px))' : '46vh',
               overflowY: 'auto',
-              background: 'rgba(255,255,255,0.97)',
-              border: '1px solid #dbe4ea',
-              borderRadius: 12,
-              boxShadow: '0 12px 24px rgba(15,23,42,0.2)',
               padding: isMobile ? 10 : 12,
             }}
+            className='map-floating-panel'
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>Painel de rota</div>
+            <div className='route-panel-hero'>
+              <div>
+                <div className='route-panel-eyebrow'>Navegacao guiada</div>
+                <div className='map-panel-title'>Painel de rota</div>
+                <div className='route-panel-subtitle'>
+                  Defina origem e destino para seguir o melhor caminho dentro do Moda Center.
+                </div>
+              </div>
               <button
                 onClick={() => setIsRoutePanelOpen(false)}
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  color: '#64748b',
-                  fontSize: 18,
-                  cursor: 'pointer',
-                  lineHeight: 1,
-                }}
+                className='pin-panel-close'
                 title='Fechar painel de rota'
               >
                 x
               </button>
             </div>
 
-            <label style={{ fontSize: 12, fontWeight: 700 }}>Local atual (digite para sugerir)</label>
-            <div style={{ position: 'relative', marginTop: 4, marginBottom: 10 }}>
-              <input
-                value={originQuery}
-                onChange={(e) => {
-                  setOriginQuery(e.target.value);
-                  setSelectedOriginId('');
-                  setShowOriginSuggestions(true);
-                }}
-                onFocus={() => setShowOriginSuggestions(true)}
-                onBlur={() => window.setTimeout(() => setShowOriginSuggestions(false), 120)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && originSuggestions.length > 0) {
-                    e.preventDefault();
-                    selectOriginPoi(originSuggestions[0]);
-                  }
-                }}
-                style={{ ...inputStyle, margin: 0 }}
-                placeholder='Ex: Entrada Sul, banheiro...'
-              />
-              {showOriginSuggestions && (
-                <div className='route-suggestions'>
-                  {originSuggestions.map((poi) => (
-                    <button
-                      key={`origin_suggestion_${poi.id}`}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => selectOriginPoi(poi)}
-                      className='route-suggestion-item'
-                    >
-                      <span>{poi.nome}</span>
-                      <span>{poi.tipo.toUpperCase()}</span>
-                    </button>
-                  ))}
-                  {originSuggestions.length === 0 && (
-                    <div className='route-suggestion-empty'>Nenhuma sugestao para local atual.</div>
+            <div className='route-field-grid'>
+              <div className='route-field-card'>
+                <label className='map-input-label route-field-label'>Origem</label>
+                <div className='route-field-input-wrap'>
+                  <input
+                    value={originQuery}
+                    onChange={(e) => {
+                      setOriginQuery(e.target.value);
+                      setSelectedOriginId('');
+                      setShowOriginSuggestions(true);
+                    }}
+                    onFocus={() => setShowOriginSuggestions(true)}
+                    onBlur={() => window.setTimeout(() => setShowOriginSuggestions(false), 120)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && originSuggestions.length > 0) {
+                        e.preventDefault();
+                        selectOriginPoi(originSuggestions[0]);
+                      }
+                    }}
+                    className='map-input route-field-input'
+                    style={{ ...inputStyle, margin: 0 }}
+                    placeholder='Ex.: Entrada Sul, banheiro...'
+                  />
+                  <span className='route-field-hint'>Onde voce esta agora</span>
+                  {showOriginSuggestions && (
+                    <div className='route-suggestions'>
+                      {originSuggestions.map((poi) => (
+                        <button
+                          key={`origin_suggestion_${poi.id}`}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => selectOriginPoi(poi)}
+                          className='route-suggestion-item'
+                        >
+                          <span className='route-suggestion-name'>{poi.nome}</span>
+                          <span className='route-suggestion-type'>{poi.tipo.toUpperCase()}</span>
+                        </button>
+                      ))}
+                      {originSuggestions.length === 0 && (
+                        <div className='route-suggestion-empty'>Nenhuma sugestao para local atual.</div>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
+              </div>
 
-            <label style={{ fontSize: 12, fontWeight: 700 }}>Ir para o local (destino)</label>
-            <div style={{ position: 'relative', marginTop: 4, marginBottom: 10 }}>
-              <input
-                value={destinationQuery}
-                onChange={(e) => {
-                  setDestinationQuery(e.target.value);
-                  setSelectedDestinationId('');
-                  setShowDestinationSuggestions(true);
-                }}
-                onFocus={() => setShowDestinationSuggestions(true)}
-                onBlur={() => window.setTimeout(() => setShowDestinationSuggestions(false), 120)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && destinationSuggestions.length > 0) {
-                    e.preventDefault();
-                    selectDestinationPoi(destinationSuggestions[0]);
-                  }
-                }}
-                style={{ ...inputStyle, margin: 0 }}
-                placeholder='Ex: Loja Kids, banheiro...'
-              />
-              {showDestinationSuggestions && (
-                <div className='route-suggestions'>
-                  {destinationSuggestions.map((poi) => (
-                    <button
-                      key={`destination_suggestion_${poi.id}`}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => selectDestinationPoi(poi)}
-                      className='route-suggestion-item'
-                    >
-                      <span>{poi.nome}</span>
-                      <span>{poi.tipo.toUpperCase()}</span>
-                    </button>
-                  ))}
-                  {destinationSuggestions.length === 0 && (
-                    <div className='route-suggestion-empty'>Nenhuma sugestao para destino.</div>
+              <div className='route-field-card'>
+                <label className='map-input-label route-field-label'>Destino</label>
+                <div className='route-field-input-wrap'>
+                  <input
+                    value={destinationQuery}
+                    onChange={(e) => {
+                      setDestinationQuery(e.target.value);
+                      setSelectedDestinationId('');
+                      setShowDestinationSuggestions(true);
+                    }}
+                    onFocus={() => setShowDestinationSuggestions(true)}
+                    onBlur={() => window.setTimeout(() => setShowDestinationSuggestions(false), 120)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && destinationSuggestions.length > 0) {
+                        e.preventDefault();
+                        selectDestinationPoi(destinationSuggestions[0]);
+                      }
+                    }}
+                    className='map-input route-field-input'
+                    style={{ ...inputStyle, margin: 0 }}
+                    placeholder='Ex.: Loja Kids, banheiro...'
+                  />
+                  <span className='route-field-hint'>Para onde voce quer ir</span>
+                  {showDestinationSuggestions && (
+                    <div className='route-suggestions'>
+                      {destinationSuggestions.map((poi) => (
+                        <button
+                          key={`destination_suggestion_${poi.id}`}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => selectDestinationPoi(poi)}
+                          className='route-suggestion-item'
+                        >
+                          <span className='route-suggestion-name'>{poi.nome}</span>
+                          <span className='route-suggestion-type'>{poi.tipo.toUpperCase()}</span>
+                        </button>
+                      ))}
+                      {destinationSuggestions.length === 0 && (
+                        <div className='route-suggestion-empty'>Nenhuma sugestao para destino.</div>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
+              </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <button onClick={handleManualRoute} style={{ ...actionButton, background: '#2563eb' }}>
+            <div className='route-action-row'>
+              <button
+                onClick={handleManualRoute}
+                style={{ ...actionButton }}
+                className='btn btn-primary route-primary-action'
+              >
                 Tracar rota
               </button>
-              <button onClick={clearRoute} style={{ ...actionButton, background: '#64748b' }}>
+              <button onClick={clearRoute} style={{ ...actionButton }} className='btn btn-neutral route-secondary-action'>
                 Limpar
               </button>
             </div>
 
-            <div
-              style={{
-                fontSize: 12,
-                lineHeight: 1.4,
-                color: '#334155',
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: 8,
-                padding: 8,
-              }}
-            >
-              {routeMessage}
+            <div className='route-feedback-card'>
+              <div className='route-feedback-title'>Resumo da navegacao</div>
+              <div className='route-feedback-text'>{routeMessage}</div>
             </div>
+
             {routeDistanceMeters > 0 && (
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 11,
-                  lineHeight: 1.45,
-                  color: '#475569',
-                  background: '#f1f5f9',
-                  border: '1px solid #dbe4ea',
-                  borderRadius: 8,
-                  padding: '7px 8px',
-                }}
-              >
-                {`Distancia: ${formatDistanceLabel(routeDistanceMeters)} | Tempo medio: ${formatWalkingTimeLabel(routeEtaMinutes)} | Progresso: ${Math.round(walkerProgress * 100)}%`}
+              <div className='route-metrics-card'>
+                <div className='route-metric-item'>
+                  <span className='route-metric-label'>Distancia</span>
+                  <span className='route-metric-value'>{formatDistanceLabel(routeDistanceMeters)}</span>
+                </div>
+                <div className='route-metric-item'>
+                  <span className='route-metric-label'>Tempo medio</span>
+                  <span className='route-metric-value'>{formatWalkingTimeLabel(routeEtaMinutes)}</span>
+                </div>
+                {!isPresentationMode && (
+                  <div className='route-metric-item'>
+                    <span className='route-metric-label'>Progresso</span>
+                    <span className='route-metric-value'>{Math.round(walkerProgress * 100)}%</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1881,33 +1831,24 @@ const ModaCenterMap = () => {
                 ))}
               </div>
 
-              <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>
-                PASSO {tutorialStepIndex + 1} DE {tutorialSteps.length}
-              </div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', marginTop: 4 }}>
-                {currentTutorialStep.title}
-              </div>
-              <div style={{ fontSize: 14, color: '#334155', marginTop: 8, lineHeight: 1.45 }}>
-                {currentTutorialStep.text}
-              </div>
-
-              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                <button
-                  onClick={closeTutorial}
-                  style={{
-                    ...actionButton,
-                    background: '#e2e8f0',
-                    color: '#334155',
-                    fontWeight: 700,
-                  }}
-                >
+              <div className='tutorial-top-row'>
+                <span className='tutorial-step-pill'>
+                  Passo {tutorialStepIndex + 1} de {tutorialSteps.length}
+                </span>
+                <button onClick={closeTutorial} className='tutorial-skip-button'>
                   Pular
                 </button>
+              </div>
+              <div className='tutorial-eyebrow'>Guia rapido</div>
+              <div className='tutorial-title'>{currentTutorialStep.title}</div>
+              <div className='tutorial-copy'>{currentTutorialStep.text}</div>
 
+              <div className='tutorial-action-row'>
                 {tutorialStepIndex > 0 && (
                   <button
                     onClick={() => setTutorialStepIndex((prev) => Math.max(0, prev - 1))}
-                    style={{ ...actionButton, background: '#64748b' }}
+                    style={{ ...actionButton }}
+                    className='btn btn-neutral tutorial-back-action'
                   >
                     Voltar
                   </button>
@@ -1918,13 +1859,18 @@ const ModaCenterMap = () => {
                     onClick={() =>
                       setTutorialStepIndex((prev) => Math.min(tutorialSteps.length - 1, prev + 1))
                     }
-                    style={{ ...actionButton, background: '#2563eb' }}
+                    style={{ ...actionButton }}
+                    className='btn btn-primary tutorial-primary-action'
                   >
                     Proximo
                   </button>
                 ) : (
-                  <button onClick={closeTutorial} style={{ ...actionButton, background: '#16a34a' }}>
-                    Comecar
+                  <button
+                    onClick={closeTutorial}
+                    style={{ ...actionButton }}
+                    className='btn btn-success tutorial-primary-action'
+                  >
+                    Iniciar mapa
                   </button>
                 )}
               </div>
@@ -1946,15 +1892,16 @@ const ModaCenterMap = () => {
               minHeight: isMobile && mobileSheetBounds ? `${mobileSheetBounds.minHeight}px` : undefined,
               maxHeight: isMobile && mobileSheetBounds ? `${mobileSheetBounds.maxHeight}px` : 'min(78dvh, 690px)',
               overflowY: isMobile ? 'hidden' : 'auto',
-              background: 'rgba(255,255,255,0.98)',
-              border: '1px solid #dbe4ea',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
               borderRadius: 14,
-              boxShadow: isMobile ? '0 8px 20px rgba(15,23,42,0.2)' : '0 18px 30px rgba(15,23,42,0.25)',
+              boxShadow: isMobile ? 'var(--shadow-soft)' : 'var(--shadow-float)',
               padding: isMobile ? 0 : 12,
               display: isMobile ? 'flex' : 'block',
               flexDirection: isMobile ? 'column' : undefined,
               transition: isMobile && !isMobileSheetDragging ? 'height 180ms ease' : undefined,
             }}
+            className='map-floating-panel'
           >
             {isMobile && (
               <button
@@ -1964,8 +1911,8 @@ const ModaCenterMap = () => {
                 style={{
                   width: '100%',
                   border: 'none',
-                  background: 'rgba(248,250,252,0.96)',
-                  borderBottom: '1px solid #e2e8f0',
+                  background: 'rgba(248, 250, 252, 0.96)',
+                  borderBottom: '1px solid var(--color-border)',
                   padding: '7px 0 6px',
                   cursor: 'ns-resize',
                   touchAction: 'none',
@@ -1977,11 +1924,11 @@ const ModaCenterMap = () => {
                     width: 46,
                     height: 5,
                     borderRadius: 999,
-                    background: '#94a3b8',
+                    background: 'var(--color-text-soft)',
                     margin: '0 auto',
                   }}
                 />
-                <span style={{ display: 'block', marginTop: 4, fontSize: 10, color: '#64748b', fontWeight: 700 }}>
+                <span style={{ display: 'block', marginTop: 4, fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 700 }}>
                   Arraste para ver mais
                 </span>
               </button>
@@ -1996,13 +1943,13 @@ const ModaCenterMap = () => {
               }}
             >
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-              <div style={{ fontSize: isMobile ? 15 : 17, fontWeight: 800, color: '#0f172a' }}>{activePoi.nome}</div>
+              <div style={{ fontSize: isMobile ? 15 : 17, fontWeight: 800, color: 'var(--color-text)' }}>{activePoi.nome}</div>
               <button
                 onClick={() => setActivePoiId(null)}
                 style={{
                   border: 'none',
                   background: 'transparent',
-                  color: '#64748b',
+                  color: 'var(--color-text-muted)',
                   fontSize: isMobile ? 18 : 20,
                   cursor: 'pointer',
                   lineHeight: 1,
@@ -2013,32 +1960,29 @@ const ModaCenterMap = () => {
               </button>
             </div>
 
-            <div style={{ fontSize: isMobile ? 12 : 13, color: '#475569', marginBottom: 8 }}>
-              Nivel 0 / GNOCENTER - {activePoi.tipo.toUpperCase()}
+              <div style={{ fontSize: isMobile ? 12 : 13, color: 'var(--color-text-muted)', marginBottom: 8 }}>
+              No GNOCENTER · {activePoi.tipo.toUpperCase()}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
               <button
-                onClick={handleDirectionsFromActivePoi}
-                style={{ ...actionButton, background: '#2563eb', padding: isMobile ? '9px 8px' : '10px 9px' }}
+                onClick={primaryPoiAction}
+                disabled={isActivePoiCurrentLocation}
+                style={{ ...actionButton, padding: isMobile ? '9px 8px' : '10px 9px' }}
+                className='btn btn-primary'
               >
-                Ir para o local
+                {primaryPoiActionLabel}
               </button>
               <button
-                onClick={setActivePoiAsOrigin}
-                style={{ ...actionButton, background: '#0ea5e9', padding: isMobile ? '9px 8px' : '10px 9px' }}
+                onClick={secondaryPoiAction}
+                style={{ ...actionButton, padding: isMobile ? '9px 8px' : '10px 9px' }}
+                className='btn btn-neutral'
               >
-                Marcar local
+                {secondaryPoiActionLabel}
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
-              <button
-                onClick={setActivePoiAsDestination}
-                style={{ ...actionButton, background: '#f43f5e', padding: isMobile ? '9px 8px' : '10px 9px' }}
-              >
-                Atualizar destino
-              </button>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 6, marginBottom: 8 }}>
               {activeWhatsappLink ? (
                 <a
                   href={activeWhatsappLink}
@@ -2046,48 +1990,46 @@ const ModaCenterMap = () => {
                   rel='noreferrer'
                   style={{
                     ...actionButton,
-                    background: '#10b981',
                     textDecoration: 'none',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: isMobile ? '9px 8px' : '10px 9px',
+                    color: '#ffffff',
                   }}
+                  className='btn btn-success'
                 >
-                  WhatsApp
+                  Falar no WhatsApp
                 </a>
               ) : (
                 <button
                   disabled
                   style={{
                     ...actionButton,
-                    background: '#cbd5e1',
                     cursor: 'not-allowed',
                     padding: '10px',
+                    color: '#2a3d54',
                   }}
+                  className='btn btn-soft'
                 >
-                  Sem contato
+                  Contato indisponível
                 </button>
               )}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <span
+                className='status-pill'
                 style={{
                   background: `${storeStatus.color}1F`,
                   color: storeStatus.color,
-                  borderRadius: 999,
                   fontSize: isMobile ? 11 : 12,
-                  fontWeight: 700,
                   padding: isMobile ? '3px 8px' : '4px 10px',
                 }}
               >
                 {storeStatus.label}
               </span>
-              <span style={{ color: '#334155', fontSize: isMobile ? 11 : 13 }}>{storeStatus.closeText}</span>
-              <span style={{ color: '#64748b', fontSize: isMobile ? 11 : 12 }}>
-                {poiAccessCount[activePoi.id] ?? 0} acessos
-              </span>
+              <span style={{ color: 'var(--color-text-muted)', fontSize: isMobile ? 11 : 13 }}>{storeStatus.closeText}</span>
             </div>
 
             {activePanelGalleryImages.length > 0 && (
@@ -2135,7 +2077,7 @@ const ModaCenterMap = () => {
                       border: '1px solid #dbe4ea',
                       borderRadius: 9,
                       overflow: 'hidden',
-                      background: 'white',
+                      background: 'var(--color-surface-strong)',
                       boxShadow: '0 6px 14px rgba(15,23,42,0.08)',
                     }}
                   >
@@ -2156,7 +2098,7 @@ const ModaCenterMap = () => {
                         style={{
                           fontSize: isMobile ? 9 : 10,
                           fontWeight: 700,
-                          color: '#1e293b',
+                          color: 'var(--color-text)',
                           lineHeight: 1.2,
                           marginBottom: 2,
                           minHeight: isMobile ? 20 : 24,
@@ -2165,7 +2107,7 @@ const ModaCenterMap = () => {
                       >
                         {produto.nome}
                       </div>
-                      <div style={{ fontSize: isMobile ? 9 : 10, fontWeight: 800, color: '#0f172a' }}>
+                      <div style={{ fontSize: isMobile ? 9 : 10, fontWeight: 800, color: 'var(--color-text)' }}>
                         {produto.preco}
                       </div>
                     </div>
@@ -2174,56 +2116,40 @@ const ModaCenterMap = () => {
               </div>
             )}
 
-            <div style={{ fontSize: isMobile ? 13 : 14, color: '#1e293b', lineHeight: 1.4 }}>
-              {activePoi.descricao || 'Sem descricao cadastrada para este ponto.'}
+            <div style={{ fontSize: isMobile ? 13 : 14, color: 'var(--color-text)', lineHeight: 1.4 }}>
+              {activePoi.descricao || 'Sem descrição cadastrada para este ponto.'}
             </div>
             </div>
           </div>
         )}
 
-        {!isAdmin && (
+        {!isPresentationMode && !isAdmin && (
           <button
             onClick={() => setIsAdmin(true)}
-            style={{
-              position: 'absolute',
-              top: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 10px)' : 14,
-              left: 12,
-              zIndex: 1100,
-              background: 'white',
-              border: '2px solid #334155',
-              borderRadius: '50%',
-              width: 40,
-              height: 40,
-              cursor: 'pointer',
-              boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
-              fontWeight: 700,
-            }}
+            style={{ top: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 10px)' : 14 }}
+            className='map-admin-trigger'
             title='Abrir painel admin'
           >
-            A
+            Admin
           </button>
         )}
 
         <MapContainer
-          bounds={mapBounds}
           center={MAP_CENTER}
-          zoom={MAP_DEFAULT_ZOOM}
-          minZoom={MAP_MIN_ZOOM}
+          zoom={isMobile ? 16.95 : MAP_DEFAULT_ZOOM}
           maxZoom={MAP_MAX_ZOOM}
-          maxBounds={MAP_VIEWPORT_BOUNDS}
-          maxBoundsViscosity={0.75}
           style={{ height: '100%', width: '100%' }}
-          zoomControl={false}
+          zoomControl={true}
           preferCanvas={false}
           zoomAnimation={!isMobile}
           markerZoomAnimation={!isMobile}
           fadeAnimation={!isMobile}
         >
           <TileLayer
-            url='https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-            attribution='&copy; OpenStreetMap contributors &copy; CARTO'
+            url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+            attribution='&copy; OpenStreetMap contributors'
           />
-          <ImageOverlay url='/maps/mapa-visual.jpg' bounds={mapBounds} opacity={0.64} />
+          <ImageOverlay url={mapOverlayUrl} bounds={mapBounds} opacity={mapOverlayOpacity} />
           <MapEvents />
           <MapController focusPoint={focusPoint} isMobile={isMobile} />
 
@@ -2279,7 +2205,7 @@ const ModaCenterMap = () => {
             const isActive = poi.id === activePoiId;
             const popupImage = poi.imagemUrl || defaultPoiImages[poi.tipo];
             const isStore = poi.tipo === 'loja';
-            const popupGallery = getPoiGalleryImages(poi).slice(0, isMobile ? 1 : 2);
+            const popupGallery = getPoiGalleryImages(poi).slice(0, isMobile || isPresentationMode ? 1 : 2);
             return (
               <Marker
                 key={poi.id}
@@ -2326,7 +2252,7 @@ const ModaCenterMap = () => {
                           {poi.nome}
                         </div>
                         <div style={{ fontSize: isMobile ? 11 : 12, color: '#64748b', marginTop: 2 }}>
-                          Nivel 0 / Gnocenter
+                          No GNOCENTER
                         </div>
                       </div>
                     </div>
@@ -2396,37 +2322,20 @@ const ModaCenterMap = () => {
                               focusPoi(poi, true);
                               markPoiAsCurrentLocation(poi);
                             }}
-                            style={{
-                              border: 'none',
-                              borderRadius: 10,
-                              background: '#2563eb',
-                              color: 'white',
-                              fontSize: isMobile ? 11 : 12,
-                              fontWeight: 800,
-                              padding: isMobile ? '8px 8px' : '8px 9px',
-                              cursor: 'pointer',
-                              boxShadow: '0 6px 14px rgba(37,99,235,0.22)',
-                            }}
+                            style={{ fontSize: isMobile ? 11 : 12, padding: isMobile ? '8px 8px' : '8px 9px' }}
+                            className='btn btn-secondary'
                       >
-                        Marcar local
+                        Definir como local atual
                       </button>
                       <button
                         onClick={() => {
                           focusPoi(poi, true);
                           navigateToPoi(poi);
                         }}
-                        style={{
-                          border: '1px solid #cbd5e1',
-                          borderRadius: 10,
-                              background: 'white',
-                              color: '#334155',
-                              fontSize: isMobile ? 11 : 12,
-                              fontWeight: 800,
-                              padding: isMobile ? '8px 8px' : '8px 9px',
-                              cursor: 'pointer',
-                            }}
+                        style={{ fontSize: isMobile ? 11 : 12, padding: isMobile ? '8px 8px' : '8px 9px' }}
+                        className='btn btn-primary'
                       >
-                        Ir para o local
+                        Traçar rota até aqui
                       </button>
                     </div>
                   </div>
@@ -2456,22 +2365,24 @@ const ModaCenterMap = () => {
 
 const inputStyle: CSSProperties = {
   width: '100%',
-  padding: '8px',
+  padding: '8px 10px',
   marginTop: '4px',
   marginBottom: '10px',
-  borderRadius: '6px',
-  border: '1px solid #cbd5e1',
+  borderRadius: '8px',
+  border: '1px solid var(--color-border-strong)',
+  background: '#fbfdff',
+  color: 'var(--color-text)',
   boxSizing: 'border-box',
 };
 
 const actionButton: CSSProperties = {
   flex: 1,
-  color: 'white',
   border: 'none',
   padding: '10px',
-  borderRadius: '6px',
+  borderRadius: '8px',
   cursor: 'pointer',
   fontWeight: 700,
+  fontFamily: 'inherit',
 };
 
 export default ModaCenterMap;
